@@ -1,0 +1,25 @@
+# Build outputs
+/build/
+/probe
+/capture
+/matcher-x86_64
+__pycache__/
+*.pyc
+*.o
+*.ko
+# Vendor downloads and proprietary binaries
+/vendor/
+/matcher-blobs/
+*.bin
+*.dll
+*.cab
+*.deb
+# Private biometric data and diagnostic sessions
+*.pgm
+*.raw
+*.rawimg
+*.log
+recognition-*/
+preprocessing-*/
+results*.txt
+replay-results-*.txt

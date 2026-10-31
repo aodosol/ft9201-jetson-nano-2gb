@@ -1,0 +1,44 @@
+int ft_engine_verify(const uint8_t *tmpl,size_t tmpllen){
+  set_gs(g_teb);
+  if(!tmpl || tmpllen==0 || tmpllen>sizeof g_rec_template) return -1;
+  memcpy(g_rec_template, tmpl, tmpllen); g_rec_tsize=tmpllen; g_have_record=1;
+  u8 id[76]; fill_identity(id);
+  u8 match=0;
+  u8 *payload=NULL, *hash=NULL;
+  size_t payload_size=0, hash_size=0;
+  u32 reject=0;
+  /* Official WinBio signature: Match, PayloadBlob, PayloadBlobSize,
+     HashValue, HashSize, RejectDetail. All SIZE_T outputs are 64-bit. */
+  u32 (MS *Verify)(void*,void*,u8,u8*,u8**,size_t*,u8**,size_t*,u32*)=
+      *(void**)((u8*)g_iface+32+10*8);
+  u32 hr=Verify(pipeline,id,1,&match,&payload,&payload_size,&hash,&hash_size,&reject);
+  fprintf(stderr,"[compat] Verify HRESULT=%#x match=%u reject=%u payload_size=%zu hash_size=%zu\n",
+          hr,match,reject,payload_size,hash_size);
+  /* Optional diagnostic for this exact DLL: compare its public boolean
+     against the lower-level matcher status and returned match count.
+     The public adapter checks only the inner return code at RVA 0x47fc.
+     Never use these reverse-engineered diagnostics as an authentication rule. */
+  if(getenv("FT9201_INTERNAL_DIAGNOSTICS")) {
+    static const unsigned char prologue[]={0x40,0x55,0x56,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57};
+    if(memcmp(g_image+0x6830,prologue,sizeof prologue)!=0) {
+      fprintf(stderr,"[internal] Unexpected DLL implementation; skipped\n");
+      return -1;
+    }
+    if(tmpllen>0x60000-8) return -1;
+    u8 *record=calloc(1,0x60000);
+    if(!record) return -1;
+    record[0]=0x79; *(u32*)(record+4)=(u32)tmpllen;
+    memcpy(record+8,tmpl,tmpllen);
+    void *records[1]={record};
+    u32 index=0, count=0;
+    u32 (MS *Inner)(void*,int,void**,u32*,u32*,void*)=(void*)(g_image+0x6830);
+    void *context=*(void**)(pipeline+0x38);
+    u32 status=Inner(context,1,records,&index,&count,NULL);
+    fprintf(stderr,"[internal] matcher_status=%#x match_count=%u index=%u public_match=%u\n",
+            status,count,index,match);
+    free(record);
+  }
+  if(hr==0x80098005U && match==0) return 0; /* WINBIO_E_NO_MATCH */
+  if(hr!=0 || reject!=0 || match>1) return -1;
+  return match==1 ? 1 : 0;
+}
